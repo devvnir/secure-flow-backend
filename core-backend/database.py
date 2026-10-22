@@ -4,7 +4,7 @@ import os
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:postgres@localhost:5432/secure_flow"
+    "postgresql://postgres:123@localhost:5432/secure_flow"
 )
 
 engine = create_engine(

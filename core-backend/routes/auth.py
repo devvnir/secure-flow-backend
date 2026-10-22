@@ -55,19 +55,25 @@ def hash_password(password: str) -> str:
 
 @router.post("/register", response_model=UserResponse)
 async def register(user_data: TokenRequest, db: Session = Depends(get_db)):
-    existing_user = db.query(User).filter(User.email == user_data.email).first()
-    if existing_user:
-        raise HTTPException(status_code=400, detail="Email already registered")
+    try:
+        existing_user = db.query(User).filter(User.email == user_data.email).first()
+        if existing_user:
+            raise HTTPException(status_code=400, detail="Email already registered")
 
-    new_user = User(
-        email=user_data.email,
-        username=user_data.email.split("@")[0],
-        password_hash=hash_password(user_data.password),
-        status="active"
-    )
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
+        new_user = User(
+            email=user_data.email,
+            username=user_data.email.split("@")[0],
+            password_hash=hash_password(user_data.password),
+            status="active"
+        )
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Registration error: {str(e)}")
     return new_user
 
 @router.post("/login", response_model=TokenResponse)

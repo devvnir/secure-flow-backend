@@ -2,10 +2,11 @@ import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 import logging
 
-from .routes import auth, data_flows
+from .routes import auth, data_flows, ingestion
 from .database import init_db
 
 load_dotenv()
@@ -22,19 +23,45 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Security middleware
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
+# CORS configuration - MUST be first
+cors_origins = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3001",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:3000").split(","),
+    allow_origins=cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=3600,
 )
+
+# Security middleware
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
+
+# Exception handler to ensure CORS headers are sent
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    error_msg = str(exc)
+    logger.error(f"Unhandled exception: {error_msg}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"detail": error_msg},
+        headers={
+            "Access-Control-Allow-Origin": "http://localhost:3000",
+            "Access-Control-Allow-Credentials": "true",
+        },
+    )
 
 # Include routers
 app.include_router(auth.router)
 app.include_router(data_flows.router)
+app.include_router(ingestion.router)
 
 @app.on_event("startup")
 async def startup_event():

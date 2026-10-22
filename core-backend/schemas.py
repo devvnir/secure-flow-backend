@@ -203,3 +203,52 @@ class ErrorResponse(BaseModel):
     message: str
     error_code: Optional[str] = None
     details: Optional[Dict[str, Any]] = None
+
+# Data Ingestion Schemas for Milestone 2
+class RESOQueryFilter(BaseModel):
+    """Token-bound RESO Web API query filters"""
+    resource: str = Field(..., description="RESO resource type (e.g., Property, Agent)")
+    filter: Optional[str] = None
+    select: Optional[List[str]] = None
+    top: int = Field(100, ge=1, le=1000)
+    skip: int = Field(0, ge=0)
+
+class DataPayload(BaseModel):
+    """Ingested data payload with validation"""
+    id: str
+    source: str
+    timestamp: datetime
+    data: Dict[str, Any]
+    schema_version: str = "1.0"
+    validation_status: str = "pending"
+
+class SchemaMapping(BaseModel):
+    """Dynamic schema translation mapping"""
+    source_schema: str
+    destination_schema: str
+    field_mappings: Dict[str, str]
+    transformations: Optional[Dict[str, str]] = None
+
+class DataIngestionRequest(BaseModel):
+    """Request to ingest data from external source"""
+    flow_id: UUID
+    source_type: str
+    query_filters: Optional[RESOQueryFilter] = None
+    validate_schema: bool = True
+
+class DataIngestionResponse(BaseModel):
+    """Response from data ingestion"""
+    run_id: UUID
+    flow_id: UUID
+    status: str
+    records_ingested: int
+    records_validated: int
+    records_failed: int
+    error_details: Optional[Dict[str, Any]] = None
+    timestamp: datetime
+
+class BatchDataPayload(BaseModel):
+    """Batch of data payloads for bulk ingestion"""
+    flow_id: UUID
+    payloads: List[DataPayload]
+    schema_version: str = "1.0"
