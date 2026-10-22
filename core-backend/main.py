@@ -39,7 +39,10 @@ app.include_router(data_flows.router)
 @app.on_event("startup")
 async def startup_event():
     logger.info("Initializing database")
-    init_db()
+    try:
+        init_db()
+    except Exception as e:
+        logger.warning(f"Database initialization failed: {e}. API will run in limited mode.")
     logger.info("Secure Flow API starting up")
 
 @app.on_event("shutdown")

@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthCredentials
+from fastapi.security import HTTPBearer
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 import jwt
@@ -8,6 +9,10 @@ from ..models import User, Session as SessionModel
 from ..schemas import TokenRequest, TokenResponse, UserResponse
 from ..database import get_db
 import os
+
+class HTTPAuthCredentials(BaseModel):
+    scheme: str
+    credentials: str
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
 security = HTTPBearer()

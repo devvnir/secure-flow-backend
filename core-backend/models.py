@@ -1,5 +1,5 @@
-from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text, JSON, INET, Enum, ForeignKey, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text, JSON, Enum, ForeignKey, UniqueConstraint
+from sqlalchemy.dialects.postgresql import UUID, JSONB, INET
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from datetime import datetime
