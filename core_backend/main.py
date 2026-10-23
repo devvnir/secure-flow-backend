@@ -10,7 +10,7 @@ import logging
 # Must run before importing modules that read env vars at import time.
 load_dotenv()
 
-from .routes import auth, data_flows, ingestion, mock_reso  # noqa: E402
+from .routes import auth, data_flows, enclave, ingestion, mock_reso, vault  # noqa: E402
 from .database import init_db  # noqa: E402
 
 logging.basicConfig(
@@ -55,6 +55,8 @@ app.include_router(auth.router)
 app.include_router(data_flows.router)
 app.include_router(ingestion.router)
 app.include_router(mock_reso.router)
+app.include_router(enclave.router)
+app.include_router(vault.router)
 
 @app.on_event("startup")
 async def startup_event():

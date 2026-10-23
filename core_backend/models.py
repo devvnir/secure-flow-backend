@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text, JSON, Enum, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, String, Boolean, DateTime, Integer, Text, JSON, Enum, ForeignKey, UniqueConstraint, LargeBinary
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 try:
     from sqlalchemy.dialects.postgresql import INET
@@ -160,6 +160,50 @@ class IngestedRecord(Base):
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     source_key = Column(String(255))
     data = Column(JSONB, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class EnclaveRecord(Base):
+    """Append-only, hash-chained forensic record of one enclave sanitization."""
+    __tablename__ = "enclave_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    seq = Column(Integer, nullable=False)
+    verdict = Column(String(20), nullable=False)
+    detected_type = Column(String(30))
+    input_sha256 = Column(String(64))
+    output_sha256 = Column(String(64))
+    report = Column(JSONB, nullable=False)
+    prev_hash = Column(String(64), nullable=False)
+    record_hash = Column(String(64), nullable=False, unique=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (UniqueConstraint("user_id", "seq"),)
+
+class VaultConfig(Base):
+    """Client-side vault parameters. The passphrase and derived key never reach the server."""
+    __tablename__ = "vault_configs"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    kdf = Column(String(50), nullable=False)
+    iterations = Column(Integer, nullable=False)
+    salt = Column(String(128), nullable=False)
+    verifier_iv = Column(String(32), nullable=False)
+    verifier_ct = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class VaultItem(Base):
+    """A file encrypted in the browser with the vault key; the server stores ciphertext only."""
+    __tablename__ = "vault_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    record_id = Column(UUID(as_uuid=True), ForeignKey("enclave_records.id", ondelete="SET NULL"), unique=True)
+    name_iv = Column(String(32), nullable=False)
+    name_ct = Column(Text, nullable=False)
+    iv = Column(String(32), nullable=False)
+    ciphertext = Column(LargeBinary, nullable=False)
+    size_bytes = Column(Integer, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class APIKey(Base):
