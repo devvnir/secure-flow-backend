@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS data_flows (
     destination_config JSONB,
     encryption_enabled BOOLEAN DEFAULT TRUE,
     status VARCHAR(50) DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'archived')),
-    created_by UUID NOT NULL REFERENCES users(id),
+    created_by UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     created_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
     updated_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
 );

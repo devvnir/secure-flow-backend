@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field, validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, validator
 from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 from uuid import UUID
@@ -110,20 +110,29 @@ class DataFlowConfigBase(BaseModel):
     source_config: Dict[str, Any]
     destination_config: Dict[str, Any]
 
+def _reject_control_chars(value):
+    if value is not None and any((ord(c) < 32 and c not in "\t\n\r") or ord(c) == 0x7F for c in value):
+        raise ValueError("must not contain control characters")
+    return value
+
 class DataFlowCreate(DataFlowConfigBase):
     name: str = Field(..., min_length=1, max_length=255)
-    description: Optional[str] = None
+    description: Optional[str] = Field(None, max_length=5000)
     encryption_enabled: bool = True
+
+    _clean_text = field_validator("name", "description")(_reject_control_chars)
 
 FlowStatus = Literal["draft", "active", "paused", "archived"]
 
 class DataFlowUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=255)
-    description: Optional[str] = None
+    description: Optional[str] = Field(None, max_length=5000)
     status: Optional[FlowStatus] = None
     encryption_enabled: Optional[bool] = None
     source_config: Optional[Dict[str, Any]] = None
     destination_config: Optional[Dict[str, Any]] = None
+
+    _clean_text = field_validator("name", "description")(_reject_control_chars)
 
 class DataFlowResponse(DataFlowConfigBase):
     id: UUID
@@ -273,5 +282,5 @@ class DataIngestionResponse(BaseModel):
 class BatchDataPayload(BaseModel):
     """Batch of data payloads for bulk ingestion"""
     flow_id: UUID
-    payloads: List[DataPayload]
+    payloads: List[DataPayload] = Field(..., min_length=1, max_length=1000)
     schema_version: str = "1.0"

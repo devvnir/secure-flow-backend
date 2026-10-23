@@ -12,7 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..ingestion import RESODataIngestionEngine, schema_translator, payload_validator
+from ..ingestion import RESODataIngestionEngine, payload_validator, safe_key, schema_translator
 from ..models import DataFlow, DataFlowRun, IngestedRecord
 from ..schemas import (
     BatchDataPayload,
@@ -50,7 +50,7 @@ def _store_records(db: Session, records, flow_id: UUID, run_id, user_id: str) ->
             flow_id=flow_id,
             run_id=run_id,
             user_id=UUID(user_id),
-            source_key=str(record.get("listing_id")) if record.get("listing_id") is not None else None,
+            source_key=safe_key(record.get("listing_id")),
             data=record,
         ))
 
@@ -117,7 +117,7 @@ async def ingest_from_reso(
         run.error_log = {
             "failed_count": len(failed_records),
             "failures": [
-                {"source_key": f["original"].get("ListingKey"), "errors": f["errors"]}
+                {"source_key": safe_key(f["original"].get("ListingKey")), "errors": f["errors"]}
                 for f in failed_records[:20]
             ],
         }

@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+import os
+from collections import defaultdict
 from datetime import datetime
 from uuid import UUID
 
@@ -22,6 +24,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/enclave", tags=["enclave"])
 
 MAX_CIPHERTEXT_B64 = ((MAX_INPUT_BYTES + 16 + 2) // 3) * 4
+
+# Each sandbox worker may use up to 512 MB; bound how many run at once, overall and per user.
+ENCLAVE_MAX_CONCURRENT = int(os.getenv("ENCLAVE_MAX_CONCURRENT", "4"))
+ENCLAVE_MAX_PER_USER = int(os.getenv("ENCLAVE_MAX_PER_USER", "2"))
+_enclave_slots = asyncio.Semaphore(ENCLAVE_MAX_CONCURRENT)
+_in_flight = defaultdict(int)
 SUPPORTED_TYPES = ["docx/docm", "xlsx/xlsm", "pptx/pptm", "pdf", "html", "svg", "csv", "txt/md/json", "png", "jpeg", "gif"]
 
 
@@ -96,13 +104,24 @@ async def sanitize(request: SanitizeRequest, credentials: HTTPAuthCredentials = 
     if request.kid != ring.kid:
         raise HTTPException(status_code=409, detail="The enclave key has rotated. Fetch the current public key and retry.")
 
+    if _in_flight[user_id] >= ENCLAVE_MAX_PER_USER:
+        raise HTTPException(status_code=429, detail="You already have files processing in the enclave. Wait for them to finish.", headers={"Retry-After": "5"})
+
     received_at = datetime.utcnow()
+    _in_flight[user_id] += 1
     try:
-        resp = await asyncio.to_thread(run_in_enclave, {**request.model_dump(), "private_key_pem": ring.private_pem})
+        async with _enclave_slots:
+            resp = await asyncio.to_thread(run_in_enclave, {**request.model_dump(), "private_key_pem": ring.private_pem})
     except EnclaveError as exc:
+        # Worker diagnostics (which may include server paths) stay in the server log.
         logger.error(f"Enclave failure for user {user_id}: {exc}")
-        _append_record(db, user_id, "error", None, None, None, {"error": "enclave_failure", "message": str(exc), "received_at": received_at.isoformat() + "Z", "enclave_kid": ring.kid})
-        raise HTTPException(status_code=502, detail=f"Enclave processing failed: {exc}")
+        public = "The file took too long to process and was stopped" if "time limit" in str(exc) else "The enclave worker failed to process the file"
+        _append_record(db, user_id, "error", None, None, None, {"error": "enclave_failure", "message": public, "received_at": received_at.isoformat() + "Z", "enclave_kid": ring.kid})
+        raise HTTPException(status_code=502, detail=f"Enclave processing failed: {public}")
+    finally:
+        _in_flight[user_id] -= 1
+        if _in_flight[user_id] <= 0:
+            _in_flight.pop(user_id, None)
 
     common = {
         "received_at": received_at.isoformat() + "Z",

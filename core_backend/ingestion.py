@@ -3,6 +3,7 @@ Milestone 2: Data Ingestion Engine with Schema Translation & Validation
 Implements RESO Web API ingestion loops, dynamic schema translation, and token-bound filtering
 """
 
+import math
 import os
 import httpx
 from typing import Dict, Any, List, Optional
@@ -24,6 +25,26 @@ def reso_api_base_url() -> str:
 
 def reso_api_token() -> str:
     return os.getenv("RESO_API_TOKEN", DEFAULT_RESO_API_TOKEN)
+
+
+def storable(value) -> bool:
+    """PostgreSQL JSONB rejects NUL characters, and JSON has no NaN/Infinity."""
+    if isinstance(value, str):
+        return "\x00" not in value
+    if isinstance(value, float):
+        return math.isfinite(value)
+    if isinstance(value, dict):
+        return all(storable(k) and storable(v) for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return all(storable(v) for v in value)
+    return True
+
+
+def safe_key(value):
+    """A record identifier safe to put in logs and JSONB."""
+    if value is None:
+        return None
+    return str(value).replace("\x00", "")[:200]
 
 
 RESO_RESOURCES = {
@@ -295,6 +316,13 @@ class RESODataIngestionEngine:
             try:
                 # Translate schema
                 translated = self.translator.translate_record(record, source_schema, dest_schema)
+                if not storable(translated):
+                    failed_records.append({
+                        "original": record,
+                        "errors": ["Contains NUL characters or non-finite numbers, which can't be stored"],
+                        "timestamp": datetime.utcnow().isoformat()
+                    })
+                    continue
 
                 # Validate if requested
                 if validate:

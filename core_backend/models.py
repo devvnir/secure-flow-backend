@@ -129,7 +129,7 @@ class DataFlow(Base):
     destination_config = Column(JSONB)
     encryption_enabled = Column(Boolean, default=True)
     status = Column(String(50), default=DataFlowStatus.DRAFT)
-    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    created_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

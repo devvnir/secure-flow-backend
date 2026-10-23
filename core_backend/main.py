@@ -8,10 +8,20 @@ from dotenv import load_dotenv
 import logging
 
 # Must run before importing modules that read env vars at import time.
-load_dotenv()
+# core_backend/.env takes precedence over the project-root .env (load_dotenv never overrides).
+_BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(_BACKEND_DIR, ".env"))
+load_dotenv(os.path.join(os.path.dirname(_BACKEND_DIR), ".env"))
 
 from .routes import auth, data_flows, enclave, ingestion, mock_reso, vault  # noqa: E402
 from .database import init_db  # noqa: E402
+from .security import app_env, get_secret_key  # noqa: E402
+
+# Fail fast: never sign tokens with a missing or published key.
+get_secret_key()
+
+MOCKS_ENABLED = os.getenv("ENABLE_MOCK_SOURCES", "true" if app_env() != "production" else "false").lower() == "true"
+ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",") if h.strip()]
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,8 +47,8 @@ app.add_middleware(
     max_age=3600,
 )
 
-# Security middleware
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
+# Reject requests whose Host header isn't one of ours (host-header injection, DNS rebinding).
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=ALLOWED_HOSTS)
 
 # Exception handler to ensure CORS headers are sent
 @app.exception_handler(Exception)
@@ -54,7 +64,8 @@ async def global_exception_handler(request, exc):
 app.include_router(auth.router)
 app.include_router(data_flows.router)
 app.include_router(ingestion.router)
-app.include_router(mock_reso.router)
+if MOCKS_ENABLED:
+    app.include_router(mock_reso.router)
 app.include_router(enclave.router)
 app.include_router(vault.router)
 
@@ -65,7 +76,7 @@ async def startup_event():
         init_db()
     except Exception as e:
         logger.warning(f"Database initialization failed: {e}. API will run in limited mode.")
-    logger.info("Secure Flow API starting up")
+    logger.info(f"Secure Flow API starting up (env={app_env()}, mock sources {'enabled' if MOCKS_ENABLED else 'disabled'})")
 
 @app.on_event("shutdown")
 async def shutdown_event():
