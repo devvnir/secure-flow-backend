@@ -9,13 +9,6 @@ venv/
 ENV/
 .venv
 
-# Next.js
-.next/
-node_modules/
-out/
-.env.local
-.env.*.local
-
 # IDE
 .vscode/
 .idea/
@@ -29,7 +22,6 @@ Thumbs.db
 
 # Logs
 *.log
-npm-debug.log*
 
 # Environment
 .env
@@ -37,5 +29,6 @@ npm-debug.log*
 !.env.example
 
 .claude
-# TypeScript build cache
-*.tsbuildinfo
+
+# Local database files
+*.db
