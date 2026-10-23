@@ -3,17 +3,29 @@ Milestone 2: Data Ingestion Engine with Schema Translation & Validation
 Implements RESO Web API ingestion loops, dynamic schema translation, and token-bound filtering
 """
 
-import json
+import os
 import httpx
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from uuid import UUID, uuid4
+from uuid import uuid4
 import logging
 
 logger = logging.getLogger(__name__)
 
-# RESO Web API Configuration
-RESO_API_BASE_URL = "https://api.reso.io/odata"
+# Real RESO feeds require vendor-issued credentials; by default we point at the
+# bundled mock RESO OData server (routes/mock_reso.py).
+DEFAULT_RESO_API_BASE_URL = "http://127.0.0.1:8000/api/mock-reso/odata"
+DEFAULT_RESO_API_TOKEN = "mock-reso-token"
+
+
+def reso_api_base_url() -> str:
+    return os.getenv("RESO_API_BASE_URL", DEFAULT_RESO_API_BASE_URL).rstrip("/")
+
+
+def reso_api_token() -> str:
+    return os.getenv("RESO_API_TOKEN", DEFAULT_RESO_API_TOKEN)
+
+
 RESO_RESOURCES = {
     "Property": "/Property",
     "Agent": "/Agent",
@@ -96,14 +108,14 @@ class SchemaTranslator:
         if "price" in field_name.lower() or "cost" in field_name.lower():
             try:
                 return float(value)
-            except:
+            except (TypeError, ValueError):
                 return value
 
-        # Date normalization
+        # Date normalization to ISO-8601 strings (JSON-storable)
         if "date" in field_name.lower() or "timestamp" in field_name.lower():
             try:
-                return datetime.fromisoformat(str(value))
-            except:
+                return datetime.fromisoformat(str(value).replace("Z", "+00:00")).isoformat()
+            except ValueError:
                 return value
 
         return value
@@ -171,9 +183,10 @@ class PayloadValidator:
             if field_name in payload:
                 value = payload[field_name]
                 if value is not None and not isinstance(value, expected_type):
+                    types = expected_type if isinstance(expected_type, tuple) else (expected_type,)
+                    expected = " or ".join(t.__name__ for t in types)
                     errors.append(
-                        f"Field {field_name} has invalid type. "
-                        f"Expected {expected_type}, got {type(value).__name__}"
+                        f"Field {field_name} has invalid type: expected {expected}, got {type(value).__name__}"
                     )
 
         return len(errors) == 0, errors
@@ -187,16 +200,22 @@ class PayloadValidator:
 class RESODataIngestionEngine:
     """RESO Web API universal ingestion loop with token-bound filtering"""
 
-    def __init__(self, auth_token: str):
-        self.auth_token = auth_token
+    def __init__(
+        self,
+        auth_token: Optional[str] = None,
+        base_url: Optional[str] = None,
+        transport: Optional[httpx.AsyncBaseTransport] = None,
+    ):
+        self.auth_token = auth_token or reso_api_token()
+        self.base_url = (base_url or reso_api_base_url()).rstrip("/")
         self.translator = SchemaTranslator()
         self.validator = PayloadValidator()
-        self.client = httpx.AsyncClient(timeout=30.0)
+        self.client = httpx.AsyncClient(timeout=30.0, transport=transport)
 
     async def ingest_from_reso(
         self,
         resource_type: str,
-        filters: Optional[Dict[str, str]] = None,
+        filters: Optional[str] = None,
         select_fields: Optional[List[str]] = None,
         top: int = 100,
         skip: int = 0
@@ -217,7 +236,7 @@ class RESODataIngestionEngine:
         if resource_type not in RESO_RESOURCES:
             raise ValueError(f"Unknown RESO resource: {resource_type}")
 
-        url = f"{RESO_API_BASE_URL}{RESO_RESOURCES[resource_type]}"
+        url = f"{self.base_url}{RESO_RESOURCES[resource_type]}"
         headers = {
             "Authorization": f"Bearer {self.auth_token}",
             "Accept": "application/json",
@@ -284,13 +303,13 @@ class RESODataIngestionEngine:
                         failed_records.append({
                             "original": record,
                             "errors": errors,
-                            "timestamp": datetime.utcnow()
+                            "timestamp": datetime.utcnow().isoformat()
                         })
                         continue
 
                 # Add metadata
                 translated["_ingestion_id"] = str(uuid4())
-                translated["_ingestion_timestamp"] = datetime.utcnow()
+                translated["_ingestion_timestamp"] = datetime.utcnow().isoformat()
                 translated["_validation_status"] = "valid"
 
                 valid_records.append(translated)
@@ -300,7 +319,7 @@ class RESODataIngestionEngine:
                 failed_records.append({
                     "original": record,
                     "errors": [str(e)],
-                    "timestamp": datetime.utcnow()
+                    "timestamp": datetime.utcnow().isoformat()
                 })
 
         logger.info(f"Batch processing complete: {len(valid_records)} valid, {len(failed_records)} failed")

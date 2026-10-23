@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Literal
 from datetime import datetime
 from uuid import UUID
 
@@ -111,14 +111,16 @@ class DataFlowConfigBase(BaseModel):
     destination_config: Dict[str, Any]
 
 class DataFlowCreate(DataFlowConfigBase):
-    name: str
+    name: str = Field(..., min_length=1, max_length=255)
     description: Optional[str] = None
     encryption_enabled: bool = True
 
+FlowStatus = Literal["draft", "active", "paused", "archived"]
+
 class DataFlowUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=255)
     description: Optional[str] = None
-    status: Optional[str] = None
+    status: Optional[FlowStatus] = None
     encryption_enabled: Optional[bool] = None
     source_config: Optional[Dict[str, Any]] = None
     destination_config: Optional[Dict[str, Any]] = None
@@ -232,9 +234,30 @@ class SchemaMapping(BaseModel):
 class DataIngestionRequest(BaseModel):
     """Request to ingest data from external source"""
     flow_id: UUID
-    source_type: str
+    source_type: str = "RESO"
     query_filters: Optional[RESOQueryFilter] = None
     validate_schema: bool = True
+
+class ValidatePayloadRequest(BaseModel):
+    data: Dict[str, Any]
+    schema_name: str = "internal"
+
+class TranslateRecordRequest(BaseModel):
+    record: Dict[str, Any]
+    source_schema: str = "reso"
+    destination_schema: str = "internal"
+
+class IngestedRecordResponse(BaseModel):
+    id: UUID
+    flow_id: UUID
+    run_id: Optional[UUID]
+    user_id: UUID
+    source_key: Optional[str]
+    data: Dict[str, Any]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 class DataIngestionResponse(BaseModel):
     """Response from data ingestion"""

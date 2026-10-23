@@ -349,6 +349,65 @@ class TestDataIngestionPipeline:
         assert len(errors) >= 2
 
 
+class TestODataFilter:
+    def test_parse_and_apply(self):
+        from ..routes.mock_reso import MOCK_PROPERTIES, apply_odata_filter
+        result = apply_odata_filter(MOCK_PROPERTIES, "ListPrice ge 725000 and StandardStatus eq 'Active'")
+        assert [r["ListingKey"] for r in result] == ["RESO_2026_002", "RESO_2026_005"]
+
+    def test_rejects_unsupported_clause(self):
+        from ..routes.mock_reso import parse_odata_filter
+        with pytest.raises(ValueError):
+            parse_odata_filter("DROP TABLE users")
+
+    def test_type_mismatch_excludes_record(self):
+        from ..routes.mock_reso import apply_odata_filter
+        assert apply_odata_filter([{"BedroomsTotal": "three"}], "BedroomsTotal gt 2") == []
+
+
+class TestRESOHttpFetch:
+    @pytest.mark.asyncio
+    async def test_sends_reso_token_and_odata_params(self):
+        import httpx
+        seen = {}
+
+        def handler(request: httpx.Request):
+            seen["auth"] = request.headers.get("authorization")
+            seen["params"] = dict(request.url.params)
+            seen["path"] = request.url.path
+            return httpx.Response(200, json={"value": [{"ListingKey": "K1"}]})
+
+        engine = RESODataIngestionEngine(
+            auth_token="reso-secret", base_url="http://reso.test/odata",
+            transport=httpx.MockTransport(handler),
+        )
+        records = await engine.ingest_from_reso("Property", filters="ListPrice gt 1", select_fields=["ListingKey"], top=5, skip=10)
+        await engine.close()
+
+        assert records == [{"ListingKey": "K1"}]
+        assert seen["auth"] == "Bearer reso-secret"
+        assert seen["path"] == "/odata/Property"
+        assert seen["params"] == {"$top": "5", "$skip": "10", "$select": "ListingKey", "$filter": "ListPrice gt 1"}
+
+    @pytest.mark.asyncio
+    async def test_upstream_error_raises(self):
+        import httpx
+        engine = RESODataIngestionEngine(
+            base_url="http://reso.test/odata",
+            transport=httpx.MockTransport(lambda r: httpx.Response(401)),
+        )
+        with pytest.raises(httpx.HTTPStatusError):
+            await engine.ingest_from_reso("Property")
+        await engine.close()
+
+    @pytest.mark.asyncio
+    async def test_unknown_resource_rejected(self):
+        engine = RESODataIngestionEngine()
+        with pytest.raises(ValueError):
+            await engine.ingest_from_reso("Spaceship")
+        await engine.close()
+
+
 # Test execution
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

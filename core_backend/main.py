@@ -1,4 +1,5 @@
 import os
+import re
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -6,10 +7,11 @@ from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 import logging
 
-from .routes import auth, data_flows, ingestion
-from .database import init_db
-
+# Must run before importing modules that read env vars at import time.
 load_dotenv()
+
+from .routes import auth, data_flows, ingestion, mock_reso  # noqa: E402
+from .database import init_db  # noqa: E402
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,17 +25,11 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# CORS configuration - MUST be first
-cors_origins = [
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:3001",
-    "http://127.0.0.1:3001",
-]
+CORS_ORIGIN_REGEX = os.getenv("CORS_ORIGIN_REGEX", r"^http://(localhost|127\.0\.0\.1)(:\d+)?$")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=cors_origins,
+    allow_origin_regex=CORS_ORIGIN_REGEX,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
@@ -47,21 +43,18 @@ app.add_middleware(TrustedHostMiddleware, allowed_hosts=["*"])
 # Exception handler to ensure CORS headers are sent
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    error_msg = str(exc)
-    logger.error(f"Unhandled exception: {error_msg}", exc_info=True)
-    return JSONResponse(
-        status_code=500,
-        content={"detail": error_msg},
-        headers={
-            "Access-Control-Allow-Origin": "http://localhost:3000",
-            "Access-Control-Allow-Credentials": "true",
-        },
-    )
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    headers = {}
+    origin = request.headers.get("origin")
+    if origin and re.match(CORS_ORIGIN_REGEX, origin):
+        headers = {"Access-Control-Allow-Origin": origin, "Access-Control-Allow-Credentials": "true"}
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"}, headers=headers)
 
 # Include routers
 app.include_router(auth.router)
 app.include_router(data_flows.router)
 app.include_router(ingestion.router)
+app.include_router(mock_reso.router)
 
 @app.on_event("startup")
 async def startup_event():

@@ -9,8 +9,7 @@ import asyncio
 from datetime import datetime
 from uuid import uuid4
 
-# Add core-backend to path
-sys.path.insert(0, 'core-backend')
+sys.path.insert(0, 'core_backend')
 
 from ingestion import SchemaTranslator, PayloadValidator, RESODataIngestionEngine
 

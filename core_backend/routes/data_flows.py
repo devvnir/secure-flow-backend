@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from datetime import datetime
 from uuid import UUID
-from ..models import DataFlow, DataFlowRun, User
-from ..schemas import DataFlowCreate, DataFlowUpdate, DataFlowResponse, DataFlowRunResponse
+from ..models import DataFlow, DataFlowRun, IngestedRecord, User
+from ..schemas import DataFlowCreate, DataFlowUpdate, DataFlowResponse, DataFlowRunResponse, IngestedRecordResponse
 from ..database import get_db
 from ..routes.auth import security, verify_token, HTTPAuthCredentials
 
@@ -122,35 +122,6 @@ async def delete_data_flow(
     db.commit()
     return {"message": "Data flow deleted successfully"}
 
-@router.post("/{flow_id}/runs")
-async def trigger_data_flow_run(
-    flow_id: UUID,
-    credentials: HTTPAuthCredentials = Depends(security),
-    db: Session = Depends(get_db)
-):
-    user_id = verify_token(credentials, db)
-    flow = db.query(DataFlow).filter(
-        DataFlow.id == flow_id,
-        DataFlow.created_by == user_id
-    ).first()
-
-    if not flow:
-        raise HTTPException(status_code=404, detail="Data flow not found")
-
-    if flow.status != "active":
-        raise HTTPException(status_code=400, detail="Data flow must be active to run")
-
-    new_run = DataFlowRun(
-        flow_id=flow_id,
-        status="pending"
-    )
-
-    db.add(new_run)
-    db.commit()
-    db.refresh(new_run)
-
-    return {"run_id": str(new_run.id), "status": "pending"}
-
 @router.get("/{flow_id}/runs", response_model=list[DataFlowRunResponse])
 async def list_data_flow_runs(
     flow_id: UUID,
@@ -166,8 +137,42 @@ async def list_data_flow_runs(
     if not flow:
         raise HTTPException(status_code=404, detail="Data flow not found")
 
-    runs = db.query(DataFlowRun).filter(DataFlowRun.flow_id == flow_id).all()
+    runs = db.query(DataFlowRun).filter(DataFlowRun.flow_id == flow_id) \
+        .order_by(DataFlowRun.created_at.desc()).all()
     return runs
+
+@router.get("/{flow_id}/data")
+async def get_ingested_data(
+    flow_id: UUID,
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    credentials: HTTPAuthCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    user_id = verify_token(credentials, db)
+    flow = db.query(DataFlow).filter(
+        DataFlow.id == flow_id,
+        DataFlow.created_by == user_id
+    ).first()
+
+    if not flow:
+        raise HTTPException(status_code=404, detail="Data flow not found")
+
+    query = db.query(IngestedRecord).filter(
+        IngestedRecord.flow_id == flow_id,
+        IngestedRecord.user_id == user_id
+    )
+    total = query.count()
+    records = query.order_by(IngestedRecord.created_at.desc()).offset(offset).limit(limit).all()
+    last_run = db.query(DataFlowRun).filter(DataFlowRun.flow_id == flow_id) \
+        .order_by(DataFlowRun.created_at.desc()).first()
+
+    return {
+        "flow_id": flow_id,
+        "records_count": total,
+        "last_ingestion": last_run.completed_at if last_run else None,
+        "data": [IngestedRecordResponse.model_validate(r) for r in records],
+    }
 
 @router.get("/{flow_id}/runs/{run_id}", response_model=DataFlowRunResponse)
 async def get_data_flow_run(
@@ -185,7 +190,10 @@ async def get_data_flow_run(
     if not flow:
         raise HTTPException(status_code=404, detail="Data flow not found")
 
-    run = db.query(DataFlowRun).filter(DataFlowRun.id == run_id).first()
+    run = db.query(DataFlowRun).filter(
+        DataFlowRun.id == run_id,
+        DataFlowRun.flow_id == flow_id
+    ).first()
     if not run:
         raise HTTPException(status_code=404, detail="Data flow run not found")
 

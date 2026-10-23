@@ -134,6 +134,7 @@ class DataFlow(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     runs = relationship("DataFlowRun", back_populates="flow", cascade="all, delete-orphan")
+    records = relationship("IngestedRecord", cascade="all, delete-orphan", passive_deletes=True)
 
 class DataFlowRun(Base):
     __tablename__ = "data_flow_runs"
@@ -149,6 +150,17 @@ class DataFlowRun(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     flow = relationship("DataFlow", back_populates="runs")
+
+class IngestedRecord(Base):
+    __tablename__ = "ingested_records"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    flow_id = Column(UUID(as_uuid=True), ForeignKey("data_flows.id", ondelete="CASCADE"), nullable=False, index=True)
+    run_id = Column(UUID(as_uuid=True), ForeignKey("data_flow_runs.id", ondelete="CASCADE"), nullable=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    source_key = Column(String(255))
+    data = Column(JSONB, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 class APIKey(Base):
     __tablename__ = "api_keys"

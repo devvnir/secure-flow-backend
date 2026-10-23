@@ -18,8 +18,8 @@ CREATE TABLE IF NOT EXISTS users (
     email_verified_at TIMESTAMP,
     two_factor_enabled BOOLEAN DEFAULT FALSE,
     last_login_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
+    updated_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
     deleted_at TIMESTAMP
 );
 
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS sessions (
     ip_address INET,
     user_agent TEXT,
     expires_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
     invalidated_at TIMESTAMP
 );
 
@@ -41,8 +41,8 @@ CREATE TABLE IF NOT EXISTS roles (
     name VARCHAR(100) UNIQUE NOT NULL,
     description TEXT,
     permissions JSONB DEFAULT '[]'::jsonb,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
+    updated_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
 );
 
 -- User roles mapping
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS user_roles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role_id UUID NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
-    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    assigned_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
     UNIQUE(user_id, role_id)
 );
 
@@ -66,7 +66,7 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     user_agent TEXT,
     status VARCHAR(50) DEFAULT 'success' CHECK (status IN ('success', 'failure', 'pending')),
     error_message TEXT,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    timestamp TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
 );
 
 -- Data flows table
@@ -81,8 +81,8 @@ CREATE TABLE IF NOT EXISTS data_flows (
     encryption_enabled BOOLEAN DEFAULT TRUE,
     status VARCHAR(50) DEFAULT 'draft' CHECK (status IN ('draft', 'active', 'paused', 'archived')),
     created_by UUID NOT NULL REFERENCES users(id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
+    updated_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
 );
 
 -- Data flow runs/executions
@@ -95,7 +95,7 @@ CREATE TABLE IF NOT EXISTS data_flow_runs (
     records_processed INTEGER DEFAULT 0,
     records_failed INTEGER DEFAULT 0,
     error_log JSONB,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
 );
 
 -- API Keys table
@@ -107,7 +107,7 @@ CREATE TABLE IF NOT EXISTS api_keys (
     last_used_at TIMESTAMP,
     expires_at TIMESTAMP,
     revoked_at TIMESTAMP,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
 );
 
 -- Encryption keys table
@@ -119,8 +119,8 @@ CREATE TABLE IF NOT EXISTS encryption_keys (
     key_hash VARCHAR(255) UNIQUE NOT NULL,
     rotation_date TIMESTAMP,
     is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
+    updated_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
 );
 
 -- Create indexes for performance
@@ -143,11 +143,11 @@ CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
 CREATE INDEX idx_api_keys_key_hash ON api_keys(key_hash);
 CREATE INDEX idx_encryption_keys_active ON encryption_keys(is_active);
 
--- Create updated_at trigger function
+-- Create updated_at trigger function (timestamps are stored as UTC)
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = CURRENT_TIMESTAMP;
+    NEW.updated_at = (CURRENT_TIMESTAMP AT TIME ZONE 'UTC');
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
