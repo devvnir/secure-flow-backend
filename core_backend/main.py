@@ -13,7 +13,7 @@ _BACKEND_DIR = os.path.dirname(os.path.abspath(__file__))
 load_dotenv(os.path.join(_BACKEND_DIR, ".env"))
 load_dotenv(os.path.join(os.path.dirname(_BACKEND_DIR), ".env"))
 
-from .routes import auth, data_flows, enclave, ingestion, mock_reso, vault  # noqa: E402
+from .routes import auth, billing, data_flows, enclave, ingestion, mock_reso, signatures, vault  # noqa: E402
 from .database import init_db  # noqa: E402
 from .security import app_env, get_secret_key  # noqa: E402
 
@@ -68,6 +68,8 @@ if MOCKS_ENABLED:
     app.include_router(mock_reso.router)
 app.include_router(enclave.router)
 app.include_router(vault.router)
+app.include_router(signatures.router)
+app.include_router(billing.router)
 
 @app.on_event("startup")
 async def startup_event():
@@ -96,8 +98,12 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
+    # Client IPs are resolved by security.client_ip() using TRUSTED_PROXY_IPS. uvicorn's own
+    # proxy-header handling would otherwise trust X-Forwarded-For from any 127.0.0.1 peer.
+    # When launching via the CLI, pass --no-proxy-headers for the same reason.
     uvicorn.run(
         app,
         host=os.getenv("API_HOST", "0.0.0.0"),
-        port=int(os.getenv("API_PORT", 8000))
+        port=int(os.getenv("API_PORT", 8000)),
+        proxy_headers=False,
     )

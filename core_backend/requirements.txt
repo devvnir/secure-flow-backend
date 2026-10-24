@@ -4,13 +4,17 @@ pydantic==2.5.0
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
 sqlalchemy==2.0.23
-psycopg2-binary==2.9.9
+# PostgreSQL drivers: psycopg2 where a native wheel exists; pure-Python pg8000 everywhere else
+# (Windows 11 ARM64 has no psycopg wheels). database.py picks whichever is installed.
+psycopg2-binary==2.9.9; platform_machine != "ARM64" and platform_machine != "arm64"
+pg8000==1.31.2
 PyJWT==2.8.0
 python-multipart==0.0.6
-passlib==1.7.4
-bcrypt==4.1.1
-cryptography==41.0.7
+# First releases that publish Windows ARM64 wheels: bcrypt 5.0.0, cryptography 46.0.3 (cffi 2.0.0)
+bcrypt==5.0.0
+cryptography==46.0.3
 httpx==0.25.2
+stripe==15.6.1
+email-validator==2.1.1
 pytest==7.4.3
 pytest-asyncio==0.21.1
-email-validator==2.1.0

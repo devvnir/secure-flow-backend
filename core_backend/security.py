@@ -118,3 +118,27 @@ WINDOW_SECONDS = 15 * 60
 failed_logins_per_account = RateLimiter(limit=5, window_seconds=WINDOW_SECONDS)
 login_attempts_per_ip = RateLimiter(limit=30, window_seconds=WINDOW_SECONDS)
 registrations_per_ip = RateLimiter(limit=10, window_seconds=WINDOW_SECONDS)
+
+
+# --------------------------------------------------------------------------- #
+# Client IP
+# --------------------------------------------------------------------------- #
+
+def _trusted_proxies() -> set:
+    return {p.strip() for p in os.getenv("TRUSTED_PROXY_IPS", "").split(",") if p.strip()}
+
+
+def client_ip(request) -> str:
+    """
+    The caller's IP as seen by this server. X-Forwarded-For is honoured only when the direct peer
+    is a configured trusted proxy (TRUSTED_PROXY_IPS); otherwise a client could spoof its address.
+    """
+    peer = request.client.host if request.client else "0.0.0.0"
+    trusted = _trusted_proxies()
+    if peer not in trusted:
+        return peer
+    hops = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",") if h.strip()]
+    for hop in reversed(hops):
+        if hop not in trusted:
+            return hop
+    return peer

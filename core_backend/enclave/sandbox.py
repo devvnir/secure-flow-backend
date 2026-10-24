@@ -18,6 +18,21 @@ class EnclaveError(Exception):
     pass
 
 
+def _worker_interpreter():
+    """
+    Command line for the worker. In a Windows virtual environment, python.exe is a launcher that
+    starts the base interpreter as a child process, which the one-process Job Object forbids, so
+    run the base interpreter directly and pass the venv's site-packages to the worker instead.
+    """
+    if os.name == "nt" and sys.prefix != sys.base_prefix:
+        base = getattr(sys, "_base_executable", None)
+        if base and os.path.exists(base) and os.path.normcase(base) != os.path.normcase(sys.executable):
+            import site
+
+            return [base, "-I", "-B", WORKER_PATH, *site.getsitepackages()]
+    return [sys.executable, "-I", "-B", WORKER_PATH]
+
+
 class _WindowsJob:
     """Job Object: per-process memory cap, no child processes, killed if the parent dies."""
 
@@ -99,7 +114,7 @@ def run_in_enclave(request: dict) -> dict:
         if os.name == "nt":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
         proc = subprocess.Popen(
-            [sys.executable, "-I", "-B", WORKER_PATH],
+            _worker_interpreter(),
             stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
             cwd=workdir, env=_minimal_env(), close_fds=True, **kwargs,
         )

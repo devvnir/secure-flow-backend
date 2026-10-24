@@ -206,6 +206,67 @@ class VaultItem(Base):
     size_bytes = Column(Integer, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class Signature(Base):
+    """Single-party canvas signature: raw vector strokes, UTC timestamp and the server-observed session IP."""
+    __tablename__ = "signatures"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_ref = Column(String(120), nullable=False)
+    strokes = Column(JSONB, nullable=False)
+    canvas_width = Column(Integer, nullable=False)
+    canvas_height = Column(Integer, nullable=False)
+    stroke_count = Column(Integer, nullable=False)
+    point_count = Column(Integer, nullable=False)
+    signed_at_utc = Column(String(32), nullable=False)
+    ip_address = Column(INET, nullable=False)
+    user_agent = Column(Text)
+    session_jti = Column(String(64))
+    signature_hash = Column(String(64), nullable=False, unique=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (UniqueConstraint("user_id", "document_ref"),)
+
+class BillingCustomer(Base):
+    __tablename__ = "billing_customers"
+
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    stripe_customer_id = Column(String(64), nullable=False, unique=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Subscription(Base):
+    __tablename__ = "subscriptions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    stripe_subscription_id = Column(String(64), nullable=False, unique=True)
+    stripe_customer_id = Column(String(64), nullable=False)
+    price_id = Column(String(64))
+    status = Column(String(32), nullable=False)
+    current_period_end = Column(DateTime)
+    cancel_at_period_end = Column(Boolean, default=False, nullable=False)
+    last_event_created = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class StripeEvent(Base):
+    """Idempotency log and payment ledger of every webhook event Stripe delivered."""
+    __tablename__ = "stripe_events"
+
+    id = Column(String(64), primary_key=True)
+    type = Column(String(80), nullable=False)
+    livemode = Column(Boolean, nullable=False, default=False)
+    event_created = Column(Integer, nullable=False)
+    status = Column(String(20), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    object_id = Column(String(64))
+    amount = Column(Integer)
+    currency = Column(String(8))
+    error = Column(Text)
+    payload = Column(JSONB, nullable=False)
+    received_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    processed_at = Column(DateTime)
+
 class APIKey(Base):
     __tablename__ = "api_keys"
 

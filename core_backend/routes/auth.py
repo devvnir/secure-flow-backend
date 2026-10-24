@@ -16,7 +16,7 @@ from ..models import User, Session as SessionModel
 from ..schemas import RefreshTokenRequest, TokenRequest, TokenResponse, UserResponse
 from ..database import get_db
 from ..security import (
-    DUMMY_HASH, failed_logins_per_account, get_secret_key, hash_password, login_attempts_per_ip,
+    DUMMY_HASH, client_ip, failed_logins_per_account, get_secret_key, hash_password, login_attempts_per_ip,
     needs_rehash, registrations_per_ip, verify_password,
 )
 
@@ -60,7 +60,7 @@ def _token_hash(token: str) -> str:
 
 
 def _client_ip(request: Request) -> str:
-    return request.client.host if request.client else "unknown"
+    return client_ip(request)
 
 
 def _too_many(retry_after: int):
@@ -89,6 +89,11 @@ def _issue_tokens(user: User, db: Session, user_agent: str = None) -> TokenRespo
 
 def verify_token(credentials: HTTPAuthCredentials, db: Session):
     """Validate an access token and return the user id. Refresh tokens and inactive users are rejected."""
+    return verify_token_claims(credentials, db)["sub"]
+
+
+def verify_token_claims(credentials: HTTPAuthCredentials, db: Session) -> dict:
+    """Like verify_token, but returns the verified claims (sub, jti, exp)."""
     try:
         payload = _decode(credentials.credentials)
     except jwt.ExpiredSignatureError:
@@ -105,7 +110,7 @@ def verify_token(credentials: HTTPAuthCredentials, db: Session):
     user = db.query(User.status).filter(User.id == user_id).first()
     if not user or user.status != "active":
         raise HTTPException(status_code=401, detail="Account not found or inactive")
-    return user_id
+    return payload
 
 
 def _username_for(email: str) -> str:

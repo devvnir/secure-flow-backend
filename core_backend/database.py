@@ -2,9 +2,22 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 import os
 
+def resolve_database_url(url: str) -> str:
+    """Use psycopg2 when it is installed, otherwise the pure-Python pg8000 driver (e.g. Windows ARM64)."""
+    scheme, sep, rest = url.partition("://")
+    if sep and scheme in ("postgresql", "postgres"):
+        try:
+            import psycopg2  # noqa: F401
+            return f"postgresql+psycopg2://{rest}"
+        except ImportError:
+            return f"postgresql+pg8000://{rest}"
+    return url
+
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
     raise RuntimeError("DATABASE_URL is not set. Configure it in the environment or core_backend/.env (see .env.example).")
+DATABASE_URL = resolve_database_url(DATABASE_URL)
 
 engine = create_engine(
     DATABASE_URL,

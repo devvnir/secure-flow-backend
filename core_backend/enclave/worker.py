@@ -14,6 +14,13 @@ import time
 
 _t0 = time.perf_counter()
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+if len(sys.argv) > 1:
+    # Started via the base interpreter (virtual environment on Windows): load the venv's packages explicitly.
+    import site
+
+    for _site_dir in sys.argv[1:]:
+        if os.path.isdir(_site_dir):
+            site.addsitedir(_site_dir)
 
 import sanitizers  # noqa: E402
 import socket  # noqa: E402,F401  (imported so the self-test can prove it is unusable)
