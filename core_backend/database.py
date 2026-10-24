@@ -44,6 +44,31 @@ MIGRATIONS = [
         END IF;
     END $$;
     """,
+    # Dynamic subscription tiers: price, product and tier as transmitted by Stripe.
+    """
+    ALTER TABLE subscriptions
+        ADD COLUMN IF NOT EXISTS tier_id VARCHAR(64),
+        ADD COLUMN IF NOT EXISTS product_id VARCHAR(64),
+        ADD COLUMN IF NOT EXISTS unit_amount INTEGER,
+        ADD COLUMN IF NOT EXISTS currency VARCHAR(8),
+        ADD COLUMN IF NOT EXISTS recurring_interval VARCHAR(10),
+        ADD COLUMN IF NOT EXISTS recurring_interval_count INTEGER,
+        ADD COLUMN IF NOT EXISTS quantity INTEGER,
+        ADD COLUMN IF NOT EXISTS items JSONB,
+        ADD COLUMN IF NOT EXISTS subscription_metadata JSONB,
+        ADD COLUMN IF NOT EXISTS payment_method VARCHAR(20),
+        ADD COLUMN IF NOT EXISTS fee_bps INTEGER,
+        ADD COLUMN IF NOT EXISTS fee_amount INTEGER
+    """,
+    """
+    ALTER TABLE stripe_events
+        ADD COLUMN IF NOT EXISTS price_id VARCHAR(64),
+        ADD COLUMN IF NOT EXISTS tier_id VARCHAR(64),
+        ADD COLUMN IF NOT EXISTS subscription_id VARCHAR(64),
+        ADD COLUMN IF NOT EXISTS payment_method VARCHAR(20),
+        ADD COLUMN IF NOT EXISTS fee_amount INTEGER
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_stripe_events_subscription_id ON stripe_events (subscription_id)",
 ]
 
 

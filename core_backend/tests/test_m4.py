@@ -67,6 +67,22 @@ class TestStripeParsing:
         assert billing._invoice_subscription({"subscription": "sub_old"}) == "sub_old"
         assert billing._invoice_subscription({"parent": {"subscription_details": {"subscription": "sub_new"}}}) == "sub_new"
 
+    def test_tier_resolution_order(self):
+        price = {"id": "price_1", "metadata": {"tier_id": "pro"}}
+        assert billing._tier_of(price, {"metadata": {"tier_id": "base"}}) == "pro"
+        assert billing._tier_of({"id": "price_1", "metadata": {}}, {"metadata": {"tier_id": "base"}}) == "base"
+        assert billing._tier_of({"id": "price_1", "metadata": {}}, None) is None
+
+    def test_invoice_price_new_and_old_api_shapes(self):
+        assert billing._invoice_price({"lines": {"data": [{"price": {"id": "price_old"}}]}}) == "price_old"
+        assert billing._invoice_price({"lines": {"data": [{"pricing": {"price_details": {"price": "price_new"}}}]}}) == "price_new"
+        assert billing._invoice_price({}) is None
+
+    def test_no_hard_coded_plan_amount(self):
+        import inspect
+        source = inspect.getsource(billing)
+        assert "25000" not in source and "PLAN" not in source
+
     def test_live_key_refused_outside_production(self, monkeypatch):
         monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_live_abc")
         monkeypatch.setenv("APP_ENV", "development")

@@ -234,6 +234,38 @@ class BillingCustomer(Base):
     stripe_customer_id = Column(String(64), nullable=False, unique=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+class BillingPrice(Base):
+    """
+    Subscription tier catalog, mirrored from Stripe. A Stripe Price is a tier when it (or its
+    product) carries metadata tier_id. Kept current by catalog syncs and price/product webhooks.
+    """
+    __tablename__ = "billing_prices"
+
+    id = Column(String(64), primary_key=True)  # Stripe price id
+    product_id = Column(String(64), nullable=False, index=True)
+    product_name = Column(String(255))
+    product_description = Column(Text)
+    tier_id = Column(String(64), index=True)
+    nickname = Column(String(255))
+    lookup_key = Column(String(255))
+    billing_scheme = Column(String(20), nullable=False, default="per_unit")
+    unit_amount = Column(Integer)  # null for tiered prices
+    currency = Column(String(8), nullable=False)
+    tiers_mode = Column(String(20))
+    tiers = Column(JSONB)  # Stripe's tier array: [{up_to, unit_amount, flat_amount}, ...]
+    recurring_interval = Column(String(10))
+    recurring_interval_count = Column(Integer)
+    active = Column(Boolean, nullable=False, default=True)
+    livemode = Column(Boolean, nullable=False, default=False)
+    price_metadata = Column(JSONB, nullable=False, default=dict)
+    product_metadata = Column(JSONB, nullable=False, default=dict)
+    features = Column(JSONB, nullable=False, default=list)
+    # Freshness of the price fields and of the product fields, tracked separately so that a
+    # product edit never makes a same-second price edit look stale (and vice versa).
+    price_event_created = Column(Integer, nullable=False, default=0)
+    product_event_created = Column(Integer, nullable=False, default=0)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class Subscription(Base):
     __tablename__ = "subscriptions"
 
@@ -242,6 +274,20 @@ class Subscription(Base):
     stripe_subscription_id = Column(String(64), nullable=False, unique=True)
     stripe_customer_id = Column(String(64), nullable=False)
     price_id = Column(String(64))
+    # Tier and price as transmitted by Stripe on the latest applied event
+    tier_id = Column(String(64))
+    product_id = Column(String(64))
+    unit_amount = Column(Integer)
+    currency = Column(String(8))
+    recurring_interval = Column(String(10))
+    recurring_interval_count = Column(Integer)
+    quantity = Column(Integer)
+    items = Column(JSONB)  # every subscription item: [{price_id, product_id, tier_id, quantity, unit_amount, ...}]
+    subscription_metadata = Column(JSONB)
+    # Payment method chosen once at checkout: "ach" (no fee) or "card" (processing fee line item)
+    payment_method = Column(String(20))
+    fee_bps = Column(Integer)  # card processing fee in basis points (500 = 5%)
+    fee_amount = Column(Integer)  # current fee line amount per period, in the smallest currency unit
     status = Column(String(32), nullable=False)
     current_period_end = Column(DateTime)
     cancel_at_period_end = Column(Boolean, default=False, nullable=False)
@@ -262,6 +308,11 @@ class StripeEvent(Base):
     object_id = Column(String(64))
     amount = Column(Integer)
     currency = Column(String(8))
+    price_id = Column(String(64))
+    tier_id = Column(String(64))
+    subscription_id = Column(String(64), index=True)
+    payment_method = Column(String(20))
+    fee_amount = Column(Integer)
     error = Column(Text)
     payload = Column(JSONB, nullable=False)
     received_at = Column(DateTime, default=datetime.utcnow, nullable=False)

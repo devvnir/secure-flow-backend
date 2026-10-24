@@ -208,12 +208,54 @@ CREATE TABLE IF NOT EXISTS billing_customers (
     created_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
 );
 
+-- Subscription tier catalog mirrored from Stripe. A Stripe Price is a tier when it (or its product)
+-- carries metadata tier_id; amounts, tier arrays and metadata are stored exactly as Stripe sends them.
+CREATE TABLE IF NOT EXISTS billing_prices (
+    id VARCHAR(64) PRIMARY KEY,
+    product_id VARCHAR(64) NOT NULL,
+    product_name VARCHAR(255),
+    product_description TEXT,
+    tier_id VARCHAR(64),
+    nickname VARCHAR(255),
+    lookup_key VARCHAR(255),
+    billing_scheme VARCHAR(20) NOT NULL DEFAULT 'per_unit',
+    unit_amount INTEGER,
+    currency VARCHAR(8) NOT NULL,
+    tiers_mode VARCHAR(20),
+    tiers JSONB,
+    recurring_interval VARCHAR(10),
+    recurring_interval_count INTEGER,
+    active BOOLEAN NOT NULL DEFAULT TRUE,
+    livemode BOOLEAN NOT NULL DEFAULT FALSE,
+    price_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    product_metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+    features JSONB NOT NULL DEFAULT '[]'::jsonb,
+    -- Freshness of price fields and product fields, tracked separately (Stripe event.created)
+    price_event_created INTEGER NOT NULL DEFAULT 0,
+    product_event_created INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')
+);
+
 CREATE TABLE IF NOT EXISTS subscriptions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     stripe_subscription_id VARCHAR(64) UNIQUE NOT NULL,
     stripe_customer_id VARCHAR(64) NOT NULL,
     price_id VARCHAR(64),
+    -- Tier and price as transmitted by Stripe on the latest applied event
+    tier_id VARCHAR(64),
+    product_id VARCHAR(64),
+    unit_amount INTEGER,
+    currency VARCHAR(8),
+    recurring_interval VARCHAR(10),
+    recurring_interval_count INTEGER,
+    quantity INTEGER,
+    items JSONB,
+    subscription_metadata JSONB,
+    -- Payment method chosen once at checkout: 'ach' (no fee) or 'card' (processing fee line item)
+    payment_method VARCHAR(20),
+    fee_bps INTEGER,
+    fee_amount INTEGER,
     status VARCHAR(32) NOT NULL,
     current_period_end TIMESTAMP,
     cancel_at_period_end BOOLEAN NOT NULL DEFAULT FALSE,
@@ -234,11 +276,40 @@ CREATE TABLE IF NOT EXISTS stripe_events (
     object_id VARCHAR(64),
     amount INTEGER,
     currency VARCHAR(8),
+    price_id VARCHAR(64),
+    tier_id VARCHAR(64),
+    subscription_id VARCHAR(64),
+    payment_method VARCHAR(20),
+    fee_amount INTEGER,
     error TEXT,
     payload JSONB NOT NULL,
     received_at TIMESTAMP NOT NULL DEFAULT (CURRENT_TIMESTAMP AT TIME ZONE 'UTC'),
     processed_at TIMESTAMP
 );
+
+-- --------------------------------------------------------------------------
+-- Upgrades for databases created before the tier / payment-method model (no-ops on new ones)
+-- --------------------------------------------------------------------------
+
+ALTER TABLE subscriptions
+    ADD COLUMN IF NOT EXISTS tier_id VARCHAR(64),
+    ADD COLUMN IF NOT EXISTS product_id VARCHAR(64),
+    ADD COLUMN IF NOT EXISTS unit_amount INTEGER,
+    ADD COLUMN IF NOT EXISTS currency VARCHAR(8),
+    ADD COLUMN IF NOT EXISTS recurring_interval VARCHAR(10),
+    ADD COLUMN IF NOT EXISTS recurring_interval_count INTEGER,
+    ADD COLUMN IF NOT EXISTS quantity INTEGER,
+    ADD COLUMN IF NOT EXISTS items JSONB,
+    ADD COLUMN IF NOT EXISTS subscription_metadata JSONB,
+    ADD COLUMN IF NOT EXISTS payment_method VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS fee_bps INTEGER,
+    ADD COLUMN IF NOT EXISTS fee_amount INTEGER;
+ALTER TABLE stripe_events
+    ADD COLUMN IF NOT EXISTS price_id VARCHAR(64),
+    ADD COLUMN IF NOT EXISTS tier_id VARCHAR(64),
+    ADD COLUMN IF NOT EXISTS subscription_id VARCHAR(64),
+    ADD COLUMN IF NOT EXISTS payment_method VARCHAR(20),
+    ADD COLUMN IF NOT EXISTS fee_amount INTEGER;
 
 -- --------------------------------------------------------------------------
 -- Indexes
@@ -262,8 +333,11 @@ CREATE INDEX IF NOT EXISTS ix_ingested_records_user_id ON ingested_records(user_
 CREATE INDEX IF NOT EXISTS ix_enclave_records_user_id ON enclave_records(user_id);
 CREATE INDEX IF NOT EXISTS ix_vault_items_user_id ON vault_items(user_id);
 CREATE INDEX IF NOT EXISTS ix_signatures_user_id ON signatures(user_id);
+CREATE INDEX IF NOT EXISTS ix_billing_prices_product_id ON billing_prices(product_id);
+CREATE INDEX IF NOT EXISTS ix_billing_prices_tier_id ON billing_prices(tier_id);
 CREATE INDEX IF NOT EXISTS ix_subscriptions_user_id ON subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS ix_stripe_events_user_id ON stripe_events(user_id);
+CREATE INDEX IF NOT EXISTS ix_stripe_events_subscription_id ON stripe_events(subscription_id);
 
 -- --------------------------------------------------------------------------
 -- updated_at maintenance (UTC)
@@ -285,5 +359,7 @@ DROP TRIGGER IF EXISTS data_flows_updated_at ON data_flows;
 CREATE TRIGGER data_flows_updated_at BEFORE UPDATE ON data_flows FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 DROP TRIGGER IF EXISTS encryption_keys_updated_at ON encryption_keys;
 CREATE TRIGGER encryption_keys_updated_at BEFORE UPDATE ON encryption_keys FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS billing_prices_updated_at ON billing_prices;
+CREATE TRIGGER billing_prices_updated_at BEFORE UPDATE ON billing_prices FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 DROP TRIGGER IF EXISTS subscriptions_updated_at ON subscriptions;
 CREATE TRIGGER subscriptions_updated_at BEFORE UPDATE ON subscriptions FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();

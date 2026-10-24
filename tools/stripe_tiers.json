@@ -1,0 +1,18 @@
+{
+  "tiers": [
+    {
+      "tier_id": "base",
+      "name": "Secure Flow Base",
+      "description": "Secure Flow base tier subscription",
+      "features": [
+        "Unlimited data flows and RESO ingestion",
+        "Process enclave sanitization with forensic audit chain",
+        "Client-side encrypted vault",
+        "Broker overlay and electronic signatures"
+      ],
+      "prices": [
+        { "lookup_key": "secure_flow_base_monthly", "nickname": "Base monthly", "unit_amount": 25000, "currency": "usd", "interval": "month" }
+      ]
+    }
+  ]
+}

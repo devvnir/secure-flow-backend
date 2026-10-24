@@ -16,6 +16,7 @@ load_dotenv(os.path.join(os.path.dirname(_BACKEND_DIR), ".env"))
 from .routes import auth, billing, data_flows, enclave, ingestion, mock_reso, signatures, vault  # noqa: E402
 from .database import init_db  # noqa: E402
 from .security import app_env, get_secret_key  # noqa: E402
+from .billing import CARD_NETWORK_SURCHARGE_CAP_BPS, BillingError, card_fee_bps  # noqa: E402
 
 # Fail fast: never sign tokens with a missing or published key.
 get_secret_key()
@@ -79,6 +80,16 @@ async def startup_event():
     except Exception as e:
         logger.warning(f"Database initialization failed: {e}. API will run in limited mode.")
     logger.info(f"Secure Flow API starting up (env={app_env()}, mock sources {'enabled' if MOCKS_ENABLED else 'disabled'})")
+    try:
+        fee_bps = card_fee_bps()
+        if fee_bps > CARD_NETWORK_SURCHARGE_CAP_BPS:
+            logger.warning(
+                f"CARD_FEE_PERCENT is {fee_bps / 100:g}%: card networks cap surcharges at "
+                f"{CARD_NETWORK_SURCHARGE_CAP_BPS / 100:g}% (Visa), forbid them on debit and prepaid cards, "
+                "and some US states restrict them. Confirm with your Stripe account and counsel."
+            )
+    except BillingError as exc:
+        logger.error(exc.message)
 
 @app.on_event("shutdown")
 async def shutdown_event():
