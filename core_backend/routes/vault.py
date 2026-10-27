@@ -46,7 +46,7 @@ class VaultItemCreate(BaseModel):
 
 
 def _config_dict(cfg: VaultConfig) -> dict:
-    return {"kdf": cfg.kdf, "iterations": cfg.iterations, "salt": cfg.salt, "verifier_iv": cfg.verifier_iv, "verifier_ct": cfg.verifier_ct, "created_at": cfg.created_at}
+    return {"configured": True, "kdf": cfg.kdf, "iterations": cfg.iterations, "salt": cfg.salt, "verifier_iv": cfg.verifier_iv, "verifier_ct": cfg.verifier_ct, "created_at": cfg.created_at}
 
 
 def _item_dict(item: VaultItem, record: EnclaveRecord = None, with_ciphertext=False) -> dict:
@@ -66,8 +66,9 @@ def _item_dict(item: VaultItem, record: EnclaveRecord = None, with_ciphertext=Fa
 async def get_vault(credentials: HTTPAuthCredentials = Depends(security), db: Session = Depends(get_db)):
     user_id = verify_token(credentials, db)
     cfg = db.query(VaultConfig).filter(VaultConfig.user_id == user_id).first()
+    # Not having a vault yet is a normal state, not an error: the client shows the setup step.
     if not cfg:
-        raise HTTPException(status_code=404, detail="Vault not set up")
+        return {"configured": False}
     return _config_dict(cfg)
 
 
