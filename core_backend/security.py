@@ -3,6 +3,7 @@
 import base64
 import hashlib
 import hmac
+import ipaddress
 import os
 import threading
 import time
@@ -124,8 +125,25 @@ registrations_per_ip = RateLimiter(limit=10, window_seconds=WINDOW_SECONDS)
 # Client IP
 # --------------------------------------------------------------------------- #
 
-def _trusted_proxies() -> set:
-    return {p.strip() for p in os.getenv("TRUSTED_PROXY_IPS", "").split(",") if p.strip()}
+def _trusted_proxies() -> list:
+    """TRUSTED_PROXY_IPS entries as networks: single IPs or CIDR ranges (e.g. 10.0.0.0/8 on Render)."""
+    networks = []
+    for entry in os.getenv("TRUSTED_PROXY_IPS", "").split(","):
+        entry = entry.strip()
+        if entry:
+            try:
+                networks.append(ipaddress.ip_network(entry, strict=False))
+            except ValueError:
+                continue
+    return networks
+
+
+def _is_trusted(address: str, trusted: list) -> bool:
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return False
+    return any(ip in network for network in trusted)
 
 
 def client_ip(request) -> str:
@@ -135,10 +153,10 @@ def client_ip(request) -> str:
     """
     peer = request.client.host if request.client else "0.0.0.0"
     trusted = _trusted_proxies()
-    if peer not in trusted:
+    if not _is_trusted(peer, trusted):
         return peer
     hops = [h.strip() for h in request.headers.get("x-forwarded-for", "").split(",") if h.strip()]
     for hop in reversed(hops):
-        if hop not in trusted:
+        if not _is_trusted(hop, trusted):
             return hop
     return peer

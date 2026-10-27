@@ -107,3 +107,25 @@ class TestInputLimits:
             BatchDataPayload(flow_id="8d3c6e64-6a3e-4b6f-9c55-2f3a9a1d2b10", payloads=[item] * 1001)
         with pytest.raises(ValueError):
             BatchDataPayload(flow_id="8d3c6e64-6a3e-4b6f-9c55-2f3a9a1d2b10", payloads=[])
+
+
+class TestClientIp:
+    class _Request:
+        def __init__(self, peer, forwarded=None):
+            self.client = type("Client", (), {"host": peer})()
+            self.headers = {"x-forwarded-for": forwarded} if forwarded else {}
+
+    def test_forwarded_header_ignored_without_trusted_proxy(self, monkeypatch):
+        monkeypatch.setenv("TRUSTED_PROXY_IPS", "")
+        assert sec.client_ip(self._Request("203.0.113.9", "198.51.100.1")) == "203.0.113.9"
+
+    def test_single_trusted_proxy(self, monkeypatch):
+        monkeypatch.setenv("TRUSTED_PROXY_IPS", "10.0.0.5")
+        assert sec.client_ip(self._Request("10.0.0.5", "198.51.100.1")) == "198.51.100.1"
+        assert sec.client_ip(self._Request("10.0.0.6", "198.51.100.1")) == "10.0.0.6"
+
+    def test_cidr_range_and_spoofed_hops(self, monkeypatch):
+        monkeypatch.setenv("TRUSTED_PROXY_IPS", "10.0.0.0/8, not-an-ip")
+        # The left-most entry is client-supplied; the right-most untrusted hop is the real client.
+        assert sec.client_ip(self._Request("10.214.3.7", "1.2.3.4, 198.51.100.1, 10.9.9.9")) == "198.51.100.1"
+        assert sec.client_ip(self._Request("10.214.3.7")) == "10.214.3.7"

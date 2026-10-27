@@ -23,6 +23,9 @@ get_secret_key()
 
 MOCKS_ENABLED = os.getenv("ENABLE_MOCK_SOURCES", "true" if app_env() != "production" else "false").lower() == "true"
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "localhost,127.0.0.1,testserver").split(",") if h.strip()]
+# Render sets RENDER_EXTERNAL_HOSTNAME to the service's public host name (e.g. secure-flow-api.onrender.com).
+if os.getenv("RENDER_EXTERNAL_HOSTNAME"):
+    ALLOWED_HOSTS.append(os.environ["RENDER_EXTERNAL_HOSTNAME"].strip())
 
 logging.basicConfig(
     level=logging.INFO,
