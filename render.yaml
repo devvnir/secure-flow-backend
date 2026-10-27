@@ -40,9 +40,9 @@ services:
         value: localhost,127.0.0.1
       - key: CORS_ORIGIN_REGEX
         value: ^https://secure-flow-web(-[a-z0-9]+)?\.onrender\.com$
-      # Render's load balancers reach the service from private addresses
+      # Render forwards requests through a local proxy and its load balancers (private addresses)
       - key: TRUSTED_PROXY_IPS
-        value: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+        value: 127.0.0.1,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
       - key: FRONTEND_URL
         value: https://secure-flow-web.onrender.com
       - key: STRIPE_SECRET_KEY
