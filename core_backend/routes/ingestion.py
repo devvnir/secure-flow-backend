@@ -98,12 +98,20 @@ async def ingest_from_reso(
         )
         filtered_records = await engine.apply_token_bound_filters(valid_records, user_id=user_id)
     except (ValueError, httpx.HTTPError) as e:
+        status_code, message = 400 if isinstance(e, ValueError) else 502, str(e)
+        # The source rejected the query itself (e.g. an invalid $filter): report its reason, not a gateway error.
+        if isinstance(e, httpx.HTTPStatusError) and 400 <= e.response.status_code < 500 and e.response.status_code not in (401, 403):
+            try:
+                body = e.response.json()
+            except ValueError:
+                body = None
+            reason = body.get("detail") if isinstance(body, dict) and isinstance(body.get("detail"), str) else None
+            status_code, message = 400, f"the RESO source rejected the request: {reason or e.response.reason_phrase}"
         run.status = "failed"
         run.completed_at = datetime.utcnow()
-        run.error_log = {"error": str(e)}
+        run.error_log = {"error": message}
         db.commit()
-        status_code = 400 if isinstance(e, ValueError) else 502
-        raise HTTPException(status_code=status_code, detail=f"Ingestion failed: {e}")
+        raise HTTPException(status_code=status_code, detail=f"Ingestion failed: {message}")
     finally:
         await engine.close()
 
